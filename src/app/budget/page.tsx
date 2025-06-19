@@ -6,13 +6,19 @@ import {
   calculateBudgetSummary, 
   formatCurrency, 
   createEmptyBudget, 
-  getCurrentMonthBudget, 
   generateItemId 
 } from '@/lib/budget-utils';
+import { 
+  saveBudget, 
+  getUserBudgets, 
+  getCurrentMonthBudget as getFirebaseCurrentMonthBudget 
+} from '@/lib/firestore-service';
+import { useAuth } from '@/contexts/AuthContext';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, getSubcategoryType } from '@/lib/categories';
 import BudgetSummaryCard from '@/components/BudgetSummaryCard';
 
 export default function BudgetPage() {
+  const { user } = useAuth();
   const [budgets, setBudgets] = useState<MonthlyBudget[]>([]);
   const [currentBudget, setCurrentBudget] = useState<MonthlyBudget | null>(null);
   const [activeTab, setActiveTab] = useState<'income' | 'expenses'>('income');
@@ -40,43 +46,22 @@ export default function BudgetPage() {
     loadBudgets();
   }, []);
 
-  const loadBudgets = () => {
+  const loadBudgets = async () => {
+    if (!user) {
+      setIsLoading(false);
+      return;
+    }
+
     try {
-      // Verificar que estamos en el cliente
-      if (typeof window === 'undefined') {
-        setIsLoading(false);
-        return;
-      }
-
-      const savedBudgets = localStorage.getItem('finanzas-hogar-budgets');
-      let budgetsList: MonthlyBudget[] = [];
-      
-      if (savedBudgets) {
-        budgetsList = JSON.parse(savedBudgets);
-        budgetsList = budgetsList.map(budget => ({
-          ...budget,
-          createdAt: new Date(budget.createdAt),
-          updatedAt: new Date(budget.updatedAt),
-          incomes: budget.incomes.map(income => ({
-            ...income,
-            date: new Date(income.date),
-          })),
-          expenses: budget.expenses.map(expense => ({
-            ...expense,
-            date: new Date(expense.date),
-          })),
-        }));
-      }
-
+      const budgetsList = await getUserBudgets(user.uid);
       setBudgets(budgetsList);
 
-      let current = getCurrentMonthBudget(budgetsList);
+      let current = await getFirebaseCurrentMonthBudget(user.uid);
       if (!current) {
         const now = new Date();
         current = createEmptyBudget(now.getMonth() + 1, now.getFullYear());
-        budgetsList.push(current);
-        setBudgets(budgetsList);
-        saveBudgets([...budgetsList]);
+        await saveBudget(user.uid, current);
+        setBudgets(prev => [...prev, current!]);
       }
 
       setCurrentBudget(current);
@@ -87,13 +72,17 @@ export default function BudgetPage() {
     }
   };
 
-  const saveBudgets = (budgetsList: MonthlyBudget[]) => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('finanzas-hogar-budgets', JSON.stringify(budgetsList));
+  const saveBudgetToFirebase = async (budget: MonthlyBudget) => {
+    if (!user) return;
+    
+    try {
+      await saveBudget(user.uid, budget);
+    } catch (error) {
+      console.error('Error saving budget:', error);
     }
   };
 
-  const addIncome = () => {
+  const addIncome = async () => {
     if (!currentBudget || !incomeForm.amount || !incomeForm.category || !incomeForm.subcategory) return;
 
     const newIncome: IncomeItem = {
@@ -117,7 +106,7 @@ export default function BudgetPage() {
 
     setBudgets(updatedBudgets);
     setCurrentBudget(updatedBudget);
-    saveBudgets(updatedBudgets);
+    await saveBudgetToFirebase(updatedBudget);
 
     // Limpiar formulario
     setIncomeForm({
@@ -129,7 +118,7 @@ export default function BudgetPage() {
     });
   };
 
-  const addExpense = () => {
+  const addExpense = async () => {
     if (!currentBudget || !expenseForm.amount || !expenseForm.category || !expenseForm.subcategory) return;
 
     const expenseType = getSubcategoryType(expenseForm.category as any, expenseForm.subcategory);
@@ -156,7 +145,7 @@ export default function BudgetPage() {
 
     setBudgets(updatedBudgets);
     setCurrentBudget(updatedBudget);
-    saveBudgets(updatedBudgets);
+    await saveBudgetToFirebase(updatedBudget);
 
     // Limpiar formulario
     setExpenseForm({
@@ -168,7 +157,7 @@ export default function BudgetPage() {
     });
   };
 
-  const deleteIncome = (id: string) => {
+  const deleteIncome = async (id: string) => {
     if (!currentBudget) return;
 
     const updatedBudget = {
@@ -183,10 +172,10 @@ export default function BudgetPage() {
 
     setBudgets(updatedBudgets);
     setCurrentBudget(updatedBudget);
-    saveBudgets(updatedBudgets);
+    await saveBudgetToFirebase(updatedBudget);
   };
 
-  const deleteExpense = (id: string) => {
+  const deleteExpense = async (id: string) => {
     if (!currentBudget) return;
 
     const updatedBudget = {
@@ -201,7 +190,7 @@ export default function BudgetPage() {
 
     setBudgets(updatedBudgets);
     setCurrentBudget(updatedBudget);
-    saveBudgets(updatedBudgets);
+    await saveBudgetToFirebase(updatedBudget);
   };
 
   if (isLoading || !currentBudget) {
