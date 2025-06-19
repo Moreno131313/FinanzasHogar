@@ -50,24 +50,24 @@ export default function AppLayout({ children }: AppLayoutProps) {
             
             <div className="flex items-center space-x-4">
               <nav className="flex space-x-4">
-                <a
-                  href="/"
+                <button
+                  onClick={() => window.location.href = '/'}
                   className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
                 >
                   Dashboard
-                </a>
-                <a
-                  href="/budget"
+                </button>
+                <button
+                  onClick={() => window.location.href = '/budget'}
                   className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
                 >
                   Presupuesto
-                </a>
-                <a
-                  href="/reports"
+                </button>
+                <button
+                  onClick={() => window.location.href = '/reports'}
                   className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
                 >
                   Reportes
-                </a>
+                </button>
               </nav>
               
               {/* Usuario y logout */}

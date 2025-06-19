@@ -128,27 +128,27 @@ export default function Dashboard() {
       <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Acciones Rápidas</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <a
-            href="/budget?tab=income"
+          <button
+            onClick={() => window.location.href = '/budget?tab=income'}
             className="btn btn-primary flex items-center justify-center space-x-2 py-3"
           >
             <span>💰</span>
             <span>Agregar Ingreso</span>
-          </a>
-          <a
-            href="/budget?tab=expenses"
+          </button>
+          <button
+            onClick={() => window.location.href = '/budget?tab=expenses'}
             className="btn btn-secondary flex items-center justify-center space-x-2 py-3"
           >
             <span>💸</span>
             <span>Agregar Gasto</span>
-          </a>
-          <a
-            href="/reports"
+          </button>
+          <button
+            onClick={() => window.location.href = '/reports'}
             className="btn btn-secondary flex items-center justify-center space-x-2 py-3"
           >
             <span>📊</span>
             <span>Ver Reportes</span>
-          </a>
+          </button>
         </div>
       </div>
     </div>
