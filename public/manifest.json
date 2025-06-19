@@ -1,0 +1,19 @@
+{
+  "name": "Finanzas Hogar - Presupuesto Personal",
+  "short_name": "Finanzas Hogar",
+  "description": "Aplicación para gestionar el presupuesto personal mensual del hogar",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f9fafb",
+  "theme_color": "#0ea5e9",
+  "orientation": "portrait-primary",
+  "categories": ["finance", "utilities", "productivity"],
+  "lang": "es",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+} 
