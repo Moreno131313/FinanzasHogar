@@ -2,70 +2,57 @@
 
 import { useState, useEffect } from 'react';
 import { MonthlyBudget, BudgetSummary } from '@/types';
-import { calculateBudgetSummary, formatCurrency, createEmptyBudget, getCurrentMonthBudget } from '@/lib/budget-utils';
+import { calculateBudgetSummary, formatCurrency, createEmptyBudget } from '@/lib/budget-utils';
+import { 
+  getUserBudgets, 
+  getCurrentMonthBudget as getFirebaseCurrentMonthBudget,
+  saveBudget 
+} from '@/lib/firestore-service';
+import { useAuth } from '@/contexts/AuthContext';
 import BudgetSummaryCard from '@/components/BudgetSummaryCard';
 import ExpensesByCategory from '@/components/ExpensesByCategory';
 import IncomeVsExpensesChart from '@/components/IncomeVsExpensesChart';
 import Logo from '@/components/Logo';
 
 export default function Dashboard() {
+  const { user } = useAuth();
   const [budgets, setBudgets] = useState<MonthlyBudget[]>([]);
   const [currentBudget, setCurrentBudget] = useState<MonthlyBudget | null>(null);
   const [summary, setSummary] = useState<BudgetSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Verificar que estamos en el cliente
-    if (typeof window === 'undefined') {
+    loadBudgets();
+  }, [user]);
+
+  const loadBudgets = async () => {
+    if (!user) {
       setIsLoading(false);
       return;
     }
 
     try {
-      // Cargar presupuestos del localStorage o crear uno nuevo
-      const savedBudgets = localStorage.getItem('finanzas-hogar-budgets');
-    let budgetsList: MonthlyBudget[] = [];
-    
-    if (savedBudgets) {
-      budgetsList = JSON.parse(savedBudgets);
-      // Convertir fechas de string a Date
-      budgetsList = budgetsList.map(budget => ({
-        ...budget,
-        createdAt: new Date(budget.createdAt),
-        updatedAt: new Date(budget.updatedAt),
-        incomes: budget.incomes.map(income => ({
-          ...income,
-          date: new Date(income.date),
-        })),
-        expenses: budget.expenses.map(expense => ({
-          ...expense,
-          date: new Date(expense.date),
-        })),
-      }));
-    }
-
-    setBudgets(budgetsList);
-
-    // Buscar o crear presupuesto del mes actual
-    let current = getCurrentMonthBudget(budgetsList);
-    if (!current) {
-      const now = new Date();
-      current = createEmptyBudget(now.getMonth() + 1, now.getFullYear());
-      budgetsList.push(current);
+      // Cargar presupuestos desde Firebase
+      const budgetsList = await getUserBudgets(user.uid);
       setBudgets(budgetsList);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('finanzas-hogar-budgets', JSON.stringify(budgetsList));
-      }
-    }
 
-    setCurrentBudget(current);
-    setSummary(calculateBudgetSummary(current));
-    setIsLoading(false);
+      // Buscar presupuesto del mes actual
+      let current = await getFirebaseCurrentMonthBudget(user.uid);
+      if (!current) {
+        const now = new Date();
+        current = createEmptyBudget(now.getMonth() + 1, now.getFullYear());
+        await saveBudget(user.uid, current);
+        setBudgets(prev => [...prev, current!]);
+      }
+
+      setCurrentBudget(current);
+      setSummary(calculateBudgetSummary(current));
+      setIsLoading(false);
     } catch (error) {
       console.error('Error loading budgets:', error);
       setIsLoading(false);
     }
-  }, []);
+  };
 
   if (isLoading || !currentBudget || !summary) {
     return (
