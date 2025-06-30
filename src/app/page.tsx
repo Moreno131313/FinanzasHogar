@@ -3,11 +3,6 @@
 import { useState, useEffect } from 'react';
 import { MonthlyBudget, BudgetSummary } from '@/types';
 import { calculateBudgetSummary, formatCurrency, createEmptyBudget } from '@/lib/budget-utils';
-import { 
-  getUserBudgets, 
-  getCurrentMonthBudget as getFirebaseCurrentMonthBudget,
-  saveBudget 
-} from '@/lib/firestore-service';
 import { useAuth } from '@/contexts/AuthContext';
 import BudgetSummaryCard from '@/components/BudgetSummaryCard';
 import ExpensesByCategory from '@/components/ExpensesByCategory';
@@ -25,36 +20,14 @@ export default function Dashboard() {
     if (!authLoading) {
       loadBudgets();
     }
-  }, [user, authLoading]);
+  }, [authLoading]);
 
   const loadBudgets = async () => {
     try {
-      let budgetsList: MonthlyBudget[] = [];
-      let current: MonthlyBudget | null = null;
-
-      if (user) {
-        // Usuario autenticado - usar Firebase
-        try {
-          budgetsList = await getUserBudgets(user.uid);
-          current = await getFirebaseCurrentMonthBudget(user.uid);
-          
-          if (!current) {
-            const now = new Date();
-            current = createEmptyBudget(now.getMonth() + 1, now.getFullYear());
-            await saveBudget(user.uid, current);
-            budgetsList = [...budgetsList, current];
-          }
-        } catch (error) {
-          console.error('Error loading from Firebase:', error);
-          // Fallback to localStorage if Firebase fails
-          current = loadFromLocalStorage();
-        }
-      } else {
-        // No autenticado - usar localStorage
-        current = loadFromLocalStorage();
-      }
-
-      setBudgets(budgetsList);
+      // Por ahora, siempre usar localStorage - evita problemas con Firebase en Vercel
+      const current = loadFromLocalStorage();
+      
+      setBudgets([current]);
       setCurrentBudget(current);
       setSummary(calculateBudgetSummary(current));
       setIsLoading(false);
@@ -125,7 +98,7 @@ export default function Dashboard() {
               </h1>
               <p className="text-gray-600 mt-1">
                 Presupuesto de {monthNames[currentBudget.month - 1]} {currentBudget.year}
-                {!user && <span className="text-sm text-orange-600 ml-2">(Modo local)</span>}
+                <span className="text-sm text-orange-600 ml-2">(Modo local)</span>
               </p>
             </div>
           </div>

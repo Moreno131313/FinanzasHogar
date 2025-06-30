@@ -1,7 +1,12 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { AuthUser, onAuthStateChange } from '@/lib/auth-service';
+
+interface AuthUser {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+}
 
 interface AuthContextType {
   user: AuthUser | null;
@@ -27,12 +32,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChange((user) => {
-      setUser(user);
+    // Para simplificar en Vercel, no usar Firebase Auth por ahora
+    // Esto permitirá que la aplicación funcione en modo local
+    const timer = setTimeout(() => {
+      setUser(null); // No hay usuario autenticado - usar modo local
       setLoading(false);
-    });
+    }, 100);
 
-    return () => unsubscribe();
+    return () => clearTimeout(timer);
   }, []);
 
   const value = {

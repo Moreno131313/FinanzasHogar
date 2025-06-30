@@ -8,17 +8,12 @@ import {
   createEmptyBudget, 
   generateItemId 
 } from '@/lib/budget-utils';
-import { 
-  saveBudget, 
-  getUserBudgets, 
-  getCurrentMonthBudget as getFirebaseCurrentMonthBudget 
-} from '@/lib/firestore-service';
 import { useAuth } from '@/contexts/AuthContext';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, getSubcategoryType } from '@/lib/categories';
 import BudgetSummaryCard from '@/components/BudgetSummaryCard';
 
 export default function BudgetPage() {
-  const { user, loading: authLoading } = useAuth();
+  const { loading: authLoading } = useAuth();
   const [budgets, setBudgets] = useState<MonthlyBudget[]>([]);
   const [currentBudget, setCurrentBudget] = useState<MonthlyBudget | null>(null);
   const [activeTab, setActiveTab] = useState<'income' | 'expenses'>('income');
@@ -46,35 +41,14 @@ export default function BudgetPage() {
     if (!authLoading) {
       loadBudgets();
     }
-  }, [user, authLoading]);
+  }, [authLoading]);
 
   const loadBudgets = async () => {
     try {
-      let budgetsList: MonthlyBudget[] = [];
-      let current: MonthlyBudget | null = null;
-
-      if (user) {
-        // Usuario autenticado - usar Firebase
-        try {
-          budgetsList = await getUserBudgets(user.uid);
-          current = await getFirebaseCurrentMonthBudget(user.uid);
-
-          if (!current) {
-            const now = new Date();
-            current = createEmptyBudget(now.getMonth() + 1, now.getFullYear());
-            await saveBudget(user.uid, current);
-            budgetsList = [...budgetsList, current];
-          }
-        } catch (error) {
-          console.error('Error loading from Firebase:', error);
-          current = loadFromLocalStorage();
-        }
-      } else {
-        // No autenticado - usar localStorage
-        current = loadFromLocalStorage();
-      }
-
-      setBudgets(budgetsList);
+      // Usar únicamente localStorage para simplicidad en Vercel
+      const current = loadFromLocalStorage();
+      
+      setBudgets([current]);
       setCurrentBudget(current);
       setIsLoading(false);
     } catch (error) {
@@ -114,22 +88,6 @@ export default function BudgetPage() {
     return createEmptyBudget(now.getMonth() + 1, now.getFullYear());
   };
 
-  const saveBudgetToStorage = async (budget: MonthlyBudget) => {
-    if (user) {
-      // Guardar en Firebase si hay usuario
-      try {
-        await saveBudget(user.uid, budget);
-      } catch (error) {
-        console.error('Error saving to Firebase:', error);
-        // Fallback a localStorage si Firebase falla
-        saveToLocalStorage(budget);
-      }
-    } else {
-      // Guardar en localStorage si no hay usuario
-      saveToLocalStorage(budget);
-    }
-  };
-
   const saveToLocalStorage = (budget: MonthlyBudget) => {
     try {
       localStorage.setItem('currentBudget', JSON.stringify(budget));
@@ -162,7 +120,7 @@ export default function BudgetPage() {
 
     setBudgets(updatedBudgets);
     setCurrentBudget(updatedBudget);
-    await saveBudgetToStorage(updatedBudget);
+    saveToLocalStorage(updatedBudget);
 
     // Limpiar formulario
     setIncomeForm({
@@ -201,7 +159,7 @@ export default function BudgetPage() {
 
     setBudgets(updatedBudgets);
     setCurrentBudget(updatedBudget);
-    await saveBudgetToStorage(updatedBudget);
+    saveToLocalStorage(updatedBudget);
 
     // Limpiar formulario
     setExpenseForm({
@@ -228,7 +186,7 @@ export default function BudgetPage() {
 
     setBudgets(updatedBudgets);
     setCurrentBudget(updatedBudget);
-    await saveBudgetToStorage(updatedBudget);
+    saveToLocalStorage(updatedBudget);
   };
 
   const deleteExpense = async (id: string) => {
@@ -246,7 +204,7 @@ export default function BudgetPage() {
 
     setBudgets(updatedBudgets);
     setCurrentBudget(updatedBudget);
-    await saveBudgetToStorage(updatedBudget);
+    saveToLocalStorage(updatedBudget);
   };
 
   if (authLoading || isLoading || !currentBudget) {

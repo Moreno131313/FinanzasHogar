@@ -2,13 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { MonthlyBudget } from '@/types';
-import { getUserBudgets } from '@/lib/firestore-service';
 import { useAuth } from '@/contexts/AuthContext';
 import AdvancedFinancialCharts from '@/components/AdvancedFinancialCharts';
 import { createEmptyBudget } from '@/lib/budget-utils';
 
 export default function ReportsPage() {
-  const { user, loading: authLoading } = useAuth();
+  const { loading: authLoading } = useAuth();
   const [budgets, setBudgets] = useState<MonthlyBudget[]>([]);
   const [selectedMonth, setSelectedMonth] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
@@ -17,25 +16,12 @@ export default function ReportsPage() {
     if (!authLoading) {
       loadBudgets();
     }
-  }, [user, authLoading]);
+  }, [authLoading]);
 
   const loadBudgets = async () => {
     try {
-      let budgetsList: MonthlyBudget[] = [];
-
-      if (user) {
-        // Usuario autenticado - usar Firebase
-        try {
-          budgetsList = await getUserBudgets(user.uid);
-        } catch (error) {
-          console.error('Error loading from Firebase:', error);
-          // Fallback to localStorage
-          budgetsList = loadFromLocalStorage();
-        }
-      } else {
-        // No autenticado - usar localStorage
-        budgetsList = loadFromLocalStorage();
-      }
+      // Usar únicamente localStorage para simplicidad en Vercel
+      const budgetsList = loadFromLocalStorage();
 
       setBudgets(budgetsList);
       
@@ -50,8 +36,8 @@ export default function ReportsPage() {
         // Si no hay presupuestos, crear uno actual para mostrar algo
         const now = new Date();
         const currentBudget = createEmptyBudget(now.getMonth() + 1, now.getFullYear());
-        budgetsList = [currentBudget];
-        setBudgets(budgetsList);
+        const newBudgetsList = [currentBudget];
+        setBudgets(newBudgetsList);
         setSelectedMonth(`${currentBudget.year}-${currentBudget.month.toString().padStart(2, '0')}`);
       }
       setIsLoading(false);
@@ -134,7 +120,7 @@ export default function ReportsPage() {
           </h1>
           <p className="text-gray-600 mt-1">
             Análisis inteligente por persona para mejores decisiones financieras
-            {!user && <span className="text-sm text-orange-600 ml-2">(Modo local)</span>}
+            <span className="text-sm text-orange-600 ml-2">(Modo local)</span>
           </p>
         </div>
         
@@ -158,7 +144,7 @@ export default function ReportsPage() {
             </h1>
             <p className="text-gray-600 mt-1">
               Análisis inteligente por persona para mejores decisiones financieras
-              {!user && <span className="text-sm text-orange-600 ml-2">(Modo local)</span>}
+              <span className="text-sm text-orange-600 ml-2">(Modo local)</span>
             </p>
           </div>
           <div className="mt-4 md:mt-0">
