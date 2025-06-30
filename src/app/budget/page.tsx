@@ -18,7 +18,7 @@ import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, getSubcategoryType } from '@/lib
 import BudgetSummaryCard from '@/components/BudgetSummaryCard';
 
 export default function BudgetPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [budgets, setBudgets] = useState<MonthlyBudget[]>([]);
   const [currentBudget, setCurrentBudget] = useState<MonthlyBudget | null>(null);
   const [activeTab, setActiveTab] = useState<'income' | 'expenses'>('income');
@@ -43,42 +43,98 @@ export default function BudgetPage() {
   });
 
   useEffect(() => {
-    loadBudgets();
-  }, []);
+    if (!authLoading) {
+      loadBudgets();
+    }
+  }, [user, authLoading]);
 
   const loadBudgets = async () => {
-    if (!user) {
-      setIsLoading(false);
-      return;
-    }
-
     try {
-      const budgetsList = await getUserBudgets(user.uid);
-      setBudgets(budgetsList);
+      let budgetsList: MonthlyBudget[] = [];
+      let current: MonthlyBudget | null = null;
 
-      let current = await getFirebaseCurrentMonthBudget(user.uid);
-      if (!current) {
-        const now = new Date();
-        current = createEmptyBudget(now.getMonth() + 1, now.getFullYear());
-        await saveBudget(user.uid, current);
-        setBudgets(prev => [...prev, current!]);
+      if (user) {
+        // Usuario autenticado - usar Firebase
+        try {
+          budgetsList = await getUserBudgets(user.uid);
+          current = await getFirebaseCurrentMonthBudget(user.uid);
+
+          if (!current) {
+            const now = new Date();
+            current = createEmptyBudget(now.getMonth() + 1, now.getFullYear());
+            await saveBudget(user.uid, current);
+            budgetsList = [...budgetsList, current];
+          }
+        } catch (error) {
+          console.error('Error loading from Firebase:', error);
+          current = loadFromLocalStorage();
+        }
+      } else {
+        // No autenticado - usar localStorage
+        current = loadFromLocalStorage();
       }
 
+      setBudgets(budgetsList);
       setCurrentBudget(current);
       setIsLoading(false);
     } catch (error) {
       console.error('Error loading budgets:', error);
+      // Crear presupuesto vacío como fallback
+      const now = new Date();
+      const fallbackBudget = createEmptyBudget(now.getMonth() + 1, now.getFullYear());
+      setCurrentBudget(fallbackBudget);
       setIsLoading(false);
     }
   };
 
-  const saveBudgetToFirebase = async (budget: MonthlyBudget) => {
-    if (!user) return;
-    
+  const loadFromLocalStorage = (): MonthlyBudget => {
     try {
-      await saveBudget(user.uid, budget);
+      const savedBudget = localStorage.getItem('currentBudget');
+      if (savedBudget) {
+        const budget = JSON.parse(savedBudget);
+        // Convertir strings de fecha a Date objects
+        budget.createdAt = new Date(budget.createdAt);
+        budget.updatedAt = new Date(budget.updatedAt);
+        budget.incomes = budget.incomes.map((income: any) => ({
+          ...income,
+          date: new Date(income.date)
+        }));
+        budget.expenses = budget.expenses.map((expense: any) => ({
+          ...expense,
+          date: new Date(expense.date)
+        }));
+        return budget;
+      }
     } catch (error) {
-      console.error('Error saving budget:', error);
+      console.error('Error loading from localStorage:', error);
+    }
+    
+    // Si no hay datos guardados, crear uno nuevo
+    const now = new Date();
+    return createEmptyBudget(now.getMonth() + 1, now.getFullYear());
+  };
+
+  const saveBudgetToStorage = async (budget: MonthlyBudget) => {
+    if (user) {
+      // Guardar en Firebase si hay usuario
+      try {
+        await saveBudget(user.uid, budget);
+      } catch (error) {
+        console.error('Error saving to Firebase:', error);
+        // Fallback a localStorage si Firebase falla
+        saveToLocalStorage(budget);
+      }
+    } else {
+      // Guardar en localStorage si no hay usuario
+      saveToLocalStorage(budget);
+    }
+  };
+
+  const saveToLocalStorage = (budget: MonthlyBudget) => {
+    try {
+      localStorage.setItem('currentBudget', JSON.stringify(budget));
+    } catch (error) {
+      console.error('Error saving to localStorage:', error);
     }
   };
 
@@ -106,7 +162,7 @@ export default function BudgetPage() {
 
     setBudgets(updatedBudgets);
     setCurrentBudget(updatedBudget);
-    await saveBudgetToFirebase(updatedBudget);
+    await saveBudgetToStorage(updatedBudget);
 
     // Limpiar formulario
     setIncomeForm({
@@ -145,7 +201,7 @@ export default function BudgetPage() {
 
     setBudgets(updatedBudgets);
     setCurrentBudget(updatedBudget);
-    await saveBudgetToFirebase(updatedBudget);
+    await saveBudgetToStorage(updatedBudget);
 
     // Limpiar formulario
     setExpenseForm({
@@ -172,7 +228,7 @@ export default function BudgetPage() {
 
     setBudgets(updatedBudgets);
     setCurrentBudget(updatedBudget);
-    await saveBudgetToFirebase(updatedBudget);
+    await saveBudgetToStorage(updatedBudget);
   };
 
   const deleteExpense = async (id: string) => {
@@ -190,10 +246,10 @@ export default function BudgetPage() {
 
     setBudgets(updatedBudgets);
     setCurrentBudget(updatedBudget);
-    await saveBudgetToFirebase(updatedBudget);
+    await saveBudgetToStorage(updatedBudget);
   };
 
-  if (isLoading || !currentBudget) {
+  if (authLoading || isLoading || !currentBudget) {
     return (
       <div className="flex items-center justify-center min-h-96">
         <div className="text-center">

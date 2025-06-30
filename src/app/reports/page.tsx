@@ -5,26 +5,38 @@ import { MonthlyBudget } from '@/types';
 import { getUserBudgets } from '@/lib/firestore-service';
 import { useAuth } from '@/contexts/AuthContext';
 import AdvancedFinancialCharts from '@/components/AdvancedFinancialCharts';
+import { createEmptyBudget } from '@/lib/budget-utils';
 
 export default function ReportsPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [budgets, setBudgets] = useState<MonthlyBudget[]>([]);
   const [selectedMonth, setSelectedMonth] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    loadBudgets();
-  }, [user]);
+    if (!authLoading) {
+      loadBudgets();
+    }
+  }, [user, authLoading]);
 
   const loadBudgets = async () => {
-    if (!user) {
-      setIsLoading(false);
-      return;
-    }
-
     try {
-      // Cargar presupuestos desde Firebase
-      const budgetsList = await getUserBudgets(user.uid);
+      let budgetsList: MonthlyBudget[] = [];
+
+      if (user) {
+        // Usuario autenticado - usar Firebase
+        try {
+          budgetsList = await getUserBudgets(user.uid);
+        } catch (error) {
+          console.error('Error loading from Firebase:', error);
+          // Fallback to localStorage
+          budgetsList = loadFromLocalStorage();
+        }
+      } else {
+        // No autenticado - usar localStorage
+        budgetsList = loadFromLocalStorage();
+      }
+
       setBudgets(budgetsList);
       
       // Seleccionar el mes más reciente por defecto
@@ -34,12 +46,44 @@ export default function ReportsPage() {
           return b.month - a.month;
         })[0];
         setSelectedMonth(`${latest.year}-${latest.month.toString().padStart(2, '0')}`);
+      } else {
+        // Si no hay presupuestos, crear uno actual para mostrar algo
+        const now = new Date();
+        const currentBudget = createEmptyBudget(now.getMonth() + 1, now.getFullYear());
+        budgetsList = [currentBudget];
+        setBudgets(budgetsList);
+        setSelectedMonth(`${currentBudget.year}-${currentBudget.month.toString().padStart(2, '0')}`);
       }
       setIsLoading(false);
     } catch (error) {
       console.error('Error loading budgets:', error);
       setIsLoading(false);
     }
+  };
+
+  const loadFromLocalStorage = (): MonthlyBudget[] => {
+    try {
+      const savedBudget = localStorage.getItem('currentBudget');
+      if (savedBudget) {
+        const budget = JSON.parse(savedBudget);
+        // Convertir strings de fecha a Date objects
+        budget.createdAt = new Date(budget.createdAt);
+        budget.updatedAt = new Date(budget.updatedAt);
+        budget.incomes = budget.incomes.map((income: any) => ({
+          ...income,
+          date: new Date(income.date)
+        }));
+        budget.expenses = budget.expenses.map((expense: any) => ({
+          ...expense,
+          date: new Date(expense.date)
+        }));
+        return [budget];
+      }
+    } catch (error) {
+      console.error('Error loading from localStorage:', error);
+    }
+    
+    return [];
   };
 
   const monthNames = [
@@ -70,7 +114,7 @@ export default function ReportsPage() {
     `${budget.year}-${budget.month.toString().padStart(2, '0')}` === selectedMonth
   );
 
-  if (isLoading) {
+  if (authLoading || isLoading) {
     return (
       <div className="flex items-center justify-center min-h-96">
         <div className="text-center">
@@ -90,6 +134,7 @@ export default function ReportsPage() {
           </h1>
           <p className="text-gray-600 mt-1">
             Análisis inteligente por persona para mejores decisiones financieras
+            {!user && <span className="text-sm text-orange-600 ml-2">(Modo local)</span>}
           </p>
         </div>
         
@@ -113,6 +158,7 @@ export default function ReportsPage() {
             </h1>
             <p className="text-gray-600 mt-1">
               Análisis inteligente por persona para mejores decisiones financieras
+              {!user && <span className="text-sm text-orange-600 ml-2">(Modo local)</span>}
             </p>
           </div>
           <div className="mt-4 md:mt-0">

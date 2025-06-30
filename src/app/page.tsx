@@ -15,46 +15,88 @@ import IncomeVsExpensesChart from '@/components/IncomeVsExpensesChart';
 import Logo from '@/components/Logo';
 
 export default function Dashboard() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [budgets, setBudgets] = useState<MonthlyBudget[]>([]);
   const [currentBudget, setCurrentBudget] = useState<MonthlyBudget | null>(null);
   const [summary, setSummary] = useState<BudgetSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    loadBudgets();
-  }, [user]);
+    if (!authLoading) {
+      loadBudgets();
+    }
+  }, [user, authLoading]);
 
   const loadBudgets = async () => {
-    if (!user) {
-      setIsLoading(false);
-      return;
-    }
-
     try {
-      // Cargar presupuestos desde Firebase
-      const budgetsList = await getUserBudgets(user.uid);
-      setBudgets(budgetsList);
+      let budgetsList: MonthlyBudget[] = [];
+      let current: MonthlyBudget | null = null;
 
-      // Buscar presupuesto del mes actual
-      let current = await getFirebaseCurrentMonthBudget(user.uid);
-      if (!current) {
-        const now = new Date();
-        current = createEmptyBudget(now.getMonth() + 1, now.getFullYear());
-        await saveBudget(user.uid, current);
-        setBudgets(prev => [...prev, current!]);
+      if (user) {
+        // Usuario autenticado - usar Firebase
+        try {
+          budgetsList = await getUserBudgets(user.uid);
+          current = await getFirebaseCurrentMonthBudget(user.uid);
+          
+          if (!current) {
+            const now = new Date();
+            current = createEmptyBudget(now.getMonth() + 1, now.getFullYear());
+            await saveBudget(user.uid, current);
+            budgetsList = [...budgetsList, current];
+          }
+        } catch (error) {
+          console.error('Error loading from Firebase:', error);
+          // Fallback to localStorage if Firebase fails
+          current = loadFromLocalStorage();
+        }
+      } else {
+        // No autenticado - usar localStorage
+        current = loadFromLocalStorage();
       }
 
+      setBudgets(budgetsList);
       setCurrentBudget(current);
       setSummary(calculateBudgetSummary(current));
       setIsLoading(false);
     } catch (error) {
       console.error('Error loading budgets:', error);
+      // Crear presupuesto vacío como fallback
+      const now = new Date();
+      const fallbackBudget = createEmptyBudget(now.getMonth() + 1, now.getFullYear());
+      setCurrentBudget(fallbackBudget);
+      setSummary(calculateBudgetSummary(fallbackBudget));
       setIsLoading(false);
     }
   };
 
-  if (isLoading || !currentBudget || !summary) {
+  const loadFromLocalStorage = (): MonthlyBudget => {
+    try {
+      const savedBudget = localStorage.getItem('currentBudget');
+      if (savedBudget) {
+        const budget = JSON.parse(savedBudget);
+        // Convertir strings de fecha a Date objects
+        budget.createdAt = new Date(budget.createdAt);
+        budget.updatedAt = new Date(budget.updatedAt);
+        budget.incomes = budget.incomes.map((income: any) => ({
+          ...income,
+          date: new Date(income.date)
+        }));
+        budget.expenses = budget.expenses.map((expense: any) => ({
+          ...expense,
+          date: new Date(expense.date)
+        }));
+        return budget;
+      }
+    } catch (error) {
+      console.error('Error loading from localStorage:', error);
+    }
+    
+    // Si no hay datos guardados, crear uno nuevo
+    const now = new Date();
+    return createEmptyBudget(now.getMonth() + 1, now.getFullYear());
+  };
+
+  if (authLoading || isLoading || !currentBudget || !summary) {
     return (
       <div className="flex items-center justify-center min-h-96">
         <div className="text-center">
@@ -83,6 +125,7 @@ export default function Dashboard() {
               </h1>
               <p className="text-gray-600 mt-1">
                 Presupuesto de {monthNames[currentBudget.month - 1]} {currentBudget.year}
+                {!user && <span className="text-sm text-orange-600 ml-2">(Modo local)</span>}
               </p>
             </div>
           </div>
