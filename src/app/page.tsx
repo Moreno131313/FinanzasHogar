@@ -3,6 +3,11 @@
 import { useState, useEffect } from 'react';
 import { MonthlyBudget, BudgetSummary } from '@/types';
 import { calculateBudgetSummary, formatCurrency, createEmptyBudget } from '@/lib/budget-utils';
+import { 
+  getUserBudgets, 
+  getCurrentMonthBudget as getFirebaseCurrentMonthBudget,
+  saveBudget 
+} from '@/lib/firestore-service';
 import { useAuth } from '@/contexts/AuthContext';
 import BudgetSummaryCard from '@/components/BudgetSummaryCard';
 import ExpensesByCategory from '@/components/ExpensesByCategory';
@@ -15,30 +20,62 @@ export default function Dashboard() {
   const [currentBudget, setCurrentBudget] = useState<MonthlyBudget | null>(null);
   const [summary, setSummary] = useState<BudgetSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isFirebaseMode, setIsFirebaseMode] = useState(false);
 
   useEffect(() => {
     if (!authLoading) {
       loadBudgets();
     }
-  }, [authLoading]);
+  }, [user, authLoading]);
 
   const loadBudgets = async () => {
     try {
-      // Por ahora, siempre usar localStorage - evita problemas con Firebase en Vercel
-      const current = loadFromLocalStorage();
-      
-      setBudgets([current]);
+      let budgetsList: MonthlyBudget[] = [];
+      let current: MonthlyBudget | null = null;
+
+      if (user) {
+        // Intentar usar Firebase primero
+        try {
+          budgetsList = await getUserBudgets(user.uid);
+          current = await getFirebaseCurrentMonthBudget(user.uid);
+          
+          if (!current) {
+            const now = new Date();
+            current = createEmptyBudget(now.getMonth() + 1, now.getFullYear());
+            await saveBudget(user.uid, current);
+            budgetsList = [...budgetsList, current];
+          }
+          
+          setIsFirebaseMode(true);
+          console.log('✅ Usando Firebase con usuario:', user.isAnonymous ? 'anónimo' : 'registrado');
+        } catch (error) {
+          console.error('⚠️ Error con Firebase, usando localStorage:', error);
+          // Fallback a localStorage si Firebase falla
+          current = loadFromLocalStorage();
+          budgetsList = [current];
+          setIsFirebaseMode(false);
+        }
+      } else {
+        // Sin usuario - usar localStorage
+        current = loadFromLocalStorage();
+        budgetsList = [current];
+        setIsFirebaseMode(false);
+        console.log('📱 Usando localStorage (modo local)');
+      }
+
+      setBudgets(budgetsList);
       setCurrentBudget(current);
       setSummary(calculateBudgetSummary(current));
       setIsLoading(false);
     } catch (error) {
       console.error('Error loading budgets:', error);
-      // Crear presupuesto vacío como fallback
+      // Crear presupuesto vacío como fallback final
       const now = new Date();
       const fallbackBudget = createEmptyBudget(now.getMonth() + 1, now.getFullYear());
       setCurrentBudget(fallbackBudget);
       setSummary(calculateBudgetSummary(fallbackBudget));
       setIsLoading(false);
+      setIsFirebaseMode(false);
     }
   };
 
@@ -85,6 +122,16 @@ export default function Dashboard() {
     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
   ];
 
+  const getModeIndicator = () => {
+    if (isFirebaseMode && user?.isAnonymous) {
+      return <span className="text-sm text-blue-600 ml-2">🌐 (Sincronizado - Usuario anónimo)</span>;
+    } else if (isFirebaseMode && user && !user.isAnonymous) {
+      return <span className="text-sm text-green-600 ml-2">✅ (Sincronizado - Cuenta personal)</span>;
+    } else {
+      return <span className="text-sm text-orange-600 ml-2">📱 (Solo local)</span>;
+    }
+  };
+
   return (
     <div className="space-y-8">
       {/* Header del Dashboard */}
@@ -98,7 +145,7 @@ export default function Dashboard() {
               </h1>
               <p className="text-gray-600 mt-1">
                 Presupuesto de {monthNames[currentBudget.month - 1]} {currentBudget.year}
-                <span className="text-sm text-orange-600 ml-2">(Modo local)</span>
+                {getModeIndicator()}
               </p>
             </div>
           </div>

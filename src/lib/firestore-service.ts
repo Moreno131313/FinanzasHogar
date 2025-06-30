@@ -6,8 +6,7 @@ import {
   getDocs, 
   deleteDoc, 
   query, 
-  where, 
-  orderBy,
+  where,
   Timestamp
 } from 'firebase/firestore';
 import { db } from './firebase';
@@ -45,59 +44,81 @@ const budgetFromFirestore = (data: any): MonthlyBudget => ({
 
 // Guardar presupuesto del usuario
 export const saveBudget = async (userId: string, budget: MonthlyBudget): Promise<void> => {
-  const budgetRef = doc(db, `users/${userId}/budgets`, budget.id);
-  await setDoc(budgetRef, budgetToFirestore(budget));
+  try {
+    const budgetRef = doc(db, `users/${userId}/budgets`, budget.id);
+    await setDoc(budgetRef, budgetToFirestore(budget));
+  } catch (error) {
+    console.error('Error saving budget to Firestore:', error);
+    throw error;
+  }
 };
 
-// Obtener todos los presupuestos del usuario
+// Obtener todos los presupuestos del usuario - Consulta simplificada
 export const getUserBudgets = async (userId: string): Promise<MonthlyBudget[]> => {
-  const budgetsRef = collection(db, `users/${userId}/budgets`);
-  // Simplified query - just get all budgets and sort in JavaScript
-  const snapshot = await getDocs(budgetsRef);
-  
-  const budgets = snapshot.docs.map(doc => budgetFromFirestore(doc.data()));
-  
-  // Sort in JavaScript instead of Firestore
-  return budgets.sort((a, b) => {
-    if (a.year !== b.year) return b.year - a.year; // desc
-    return b.month - a.month; // desc
-  });
+  try {
+    const budgetsRef = collection(db, `users/${userId}/budgets`);
+    // Solo obtener todos los documentos, sin filtros complejos
+    const snapshot = await getDocs(budgetsRef);
+    
+    const budgets = snapshot.docs.map(doc => budgetFromFirestore(doc.data()));
+    
+    // Ordenar en JavaScript en lugar de Firestore
+    return budgets.sort((a, b) => {
+      if (a.year !== b.year) return b.year - a.year; // desc
+      return b.month - a.month; // desc
+    });
+  } catch (error) {
+    console.error('Error getting user budgets:', error);
+    throw error;
+  }
 };
 
 // Obtener un presupuesto específico
 export const getBudget = async (userId: string, budgetId: string): Promise<MonthlyBudget | null> => {
-  const budgetRef = doc(db, `users/${userId}/budgets`, budgetId);
-  const snapshot = await getDoc(budgetRef);
-  
-  if (snapshot.exists()) {
-    return budgetFromFirestore(snapshot.data());
+  try {
+    const budgetRef = doc(db, `users/${userId}/budgets`, budgetId);
+    const snapshot = await getDoc(budgetRef);
+    
+    if (snapshot.exists()) {
+      return budgetFromFirestore(snapshot.data());
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error getting budget:', error);
+    throw error;
   }
-  
-  return null;
 };
 
 // Eliminar un presupuesto
 export const deleteBudget = async (userId: string, budgetId: string): Promise<void> => {
-  const budgetRef = doc(db, `users/${userId}/budgets`, budgetId);
-  await deleteDoc(budgetRef);
+  try {
+    const budgetRef = doc(db, `users/${userId}/budgets`, budgetId);
+    await deleteDoc(budgetRef);
+  } catch (error) {
+    console.error('Error deleting budget:', error);
+    throw error;
+  }
 };
 
-// Obtener presupuesto del mes actual
+// Obtener presupuesto del mes actual - Simplificado
 export const getCurrentMonthBudget = async (userId: string): Promise<MonthlyBudget | null> => {
-  const now = new Date();
-  const currentMonth = now.getMonth() + 1;
-  const currentYear = now.getFullYear();
-  
-  const budgetsRef = collection(db, `users/${userId}/budgets`);
-  // Get all budgets and filter in JavaScript
-  const snapshot = await getDocs(budgetsRef);
-  
-  const budgets = snapshot.docs.map(doc => budgetFromFirestore(doc.data()));
-  
-  // Find current month budget in JavaScript
-  const currentBudget = budgets.find(budget => 
-    budget.month === currentMonth && budget.year === currentYear
-  );
-  
-  return currentBudget || null;
+  try {
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+    
+    // Obtener todos los presupuestos y filtrar en JavaScript
+    const budgets = await getUserBudgets(userId);
+    
+    // Buscar el presupuesto del mes actual
+    const currentBudget = budgets.find(budget => 
+      budget.month === currentMonth && budget.year === currentYear
+    );
+    
+    return currentBudget || null;
+  } catch (error) {
+    console.error('Error getting current month budget:', error);
+    throw error;
+  }
 }; 

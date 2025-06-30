@@ -1,11 +1,18 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { 
+  signInAnonymously, 
+  onAuthStateChanged, 
+  User
+} from 'firebase/auth';
+import { auth } from '@/lib/firebase';
 
 interface AuthUser {
   uid: string;
   email: string | null;
   displayName: string | null;
+  isAnonymous: boolean;
 }
 
 interface AuthContextType {
@@ -23,6 +30,14 @@ export const useAuth = () => {
   return context;
 };
 
+// Función para convertir Firebase User a AuthUser
+const convertFirebaseUser = (user: User): AuthUser => ({
+  uid: user.uid,
+  email: user.email,
+  displayName: user.displayName,
+  isAnonymous: user.isAnonymous
+});
+
 interface AuthProviderProps {
   children: React.ReactNode;
 }
@@ -32,14 +47,25 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Para simplificar en Vercel, no usar Firebase Auth por ahora
-    // Esto permitirá que la aplicación funcione en modo local
-    const timer = setTimeout(() => {
-      setUser(null); // No hay usuario autenticado - usar modo local
-      setLoading(false);
-    }, 100);
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      try {
+        if (firebaseUser) {
+          setUser(convertFirebaseUser(firebaseUser));
+        } else {
+          // Si no hay usuario, crear uno anónimo automáticamente
+          const result = await signInAnonymously(auth);
+          setUser(convertFirebaseUser(result.user));
+        }
+      } catch (error) {
+        console.error('Error with authentication:', error);
+        // En caso de error, usar modo local como fallback
+        setUser(null);
+      } finally {
+        setLoading(false);
+      }
+    });
 
-    return () => clearTimeout(timer);
+    return () => unsubscribe();
   }, []);
 
   const value = {

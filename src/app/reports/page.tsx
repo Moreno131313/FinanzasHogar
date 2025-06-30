@@ -2,26 +2,43 @@
 
 import { useState, useEffect } from 'react';
 import { MonthlyBudget } from '@/types';
+import { getUserBudgets } from '@/lib/firestore-service';
 import { useAuth } from '@/contexts/AuthContext';
 import AdvancedFinancialCharts from '@/components/AdvancedFinancialCharts';
 import { createEmptyBudget } from '@/lib/budget-utils';
 
 export default function ReportsPage() {
-  const { loading: authLoading } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [budgets, setBudgets] = useState<MonthlyBudget[]>([]);
   const [selectedMonth, setSelectedMonth] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
+  const [isFirebaseMode, setIsFirebaseMode] = useState(false);
 
   useEffect(() => {
     if (!authLoading) {
       loadBudgets();
     }
-  }, [authLoading]);
+  }, [user, authLoading]);
 
   const loadBudgets = async () => {
     try {
-      // Usar únicamente localStorage para simplicidad en Vercel
-      const budgetsList = loadFromLocalStorage();
+      let budgetsList: MonthlyBudget[] = [];
+
+      if (user) {
+        // Intentar usar Firebase primero
+        try {
+          budgetsList = await getUserBudgets(user.uid);
+          setIsFirebaseMode(true);
+        } catch (error) {
+          console.error('Error con Firebase, usando localStorage:', error);
+          budgetsList = loadFromLocalStorage();
+          setIsFirebaseMode(false);
+        }
+      } else {
+        // Sin usuario - usar localStorage
+        budgetsList = loadFromLocalStorage();
+        setIsFirebaseMode(false);
+      }
 
       setBudgets(budgetsList);
       
@@ -44,6 +61,7 @@ export default function ReportsPage() {
     } catch (error) {
       console.error('Error loading budgets:', error);
       setIsLoading(false);
+      setIsFirebaseMode(false);
     }
   };
 
@@ -100,6 +118,16 @@ export default function ReportsPage() {
     `${budget.year}-${budget.month.toString().padStart(2, '0')}` === selectedMonth
   );
 
+  const getModeIndicator = () => {
+    if (isFirebaseMode && user?.isAnonymous) {
+      return <span className="text-sm text-blue-600 ml-2">🌐 (Sincronizado - Usuario anónimo)</span>;
+    } else if (isFirebaseMode && user && !user.isAnonymous) {
+      return <span className="text-sm text-green-600 ml-2">✅ (Sincronizado - Cuenta personal)</span>;
+    } else {
+      return <span className="text-sm text-orange-600 ml-2">📱 (Solo local)</span>;
+    }
+  };
+
   if (authLoading || isLoading) {
     return (
       <div className="flex items-center justify-center min-h-96">
@@ -120,7 +148,7 @@ export default function ReportsPage() {
           </h1>
           <p className="text-gray-600 mt-1">
             Análisis inteligente por persona para mejores decisiones financieras
-            <span className="text-sm text-orange-600 ml-2">(Modo local)</span>
+            {getModeIndicator()}
           </p>
         </div>
         
@@ -144,7 +172,7 @@ export default function ReportsPage() {
             </h1>
             <p className="text-gray-600 mt-1">
               Análisis inteligente por persona para mejores decisiones financieras
-              <span className="text-sm text-orange-600 ml-2">(Modo local)</span>
+              {getModeIndicator()}
             </p>
           </div>
           <div className="mt-4 md:mt-0">

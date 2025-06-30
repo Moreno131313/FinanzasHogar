@@ -8,16 +8,22 @@ import {
   createEmptyBudget, 
   generateItemId 
 } from '@/lib/budget-utils';
+import { 
+  saveBudget, 
+  getUserBudgets, 
+  getCurrentMonthBudget as getFirebaseCurrentMonthBudget 
+} from '@/lib/firestore-service';
 import { useAuth } from '@/contexts/AuthContext';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, getSubcategoryType } from '@/lib/categories';
 import BudgetSummaryCard from '@/components/BudgetSummaryCard';
 
 export default function BudgetPage() {
-  const { loading: authLoading } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [budgets, setBudgets] = useState<MonthlyBudget[]>([]);
   const [currentBudget, setCurrentBudget] = useState<MonthlyBudget | null>(null);
   const [activeTab, setActiveTab] = useState<'income' | 'expenses'>('income');
   const [isLoading, setIsLoading] = useState(true);
+  const [isFirebaseMode, setIsFirebaseMode] = useState(false);
   
   // Formulario de ingresos
   const [incomeForm, setIncomeForm] = useState({
@@ -41,14 +47,41 @@ export default function BudgetPage() {
     if (!authLoading) {
       loadBudgets();
     }
-  }, [authLoading]);
+  }, [user, authLoading]);
 
   const loadBudgets = async () => {
     try {
-      // Usar únicamente localStorage para simplicidad en Vercel
-      const current = loadFromLocalStorage();
-      
-      setBudgets([current]);
+      let budgetsList: MonthlyBudget[] = [];
+      let current: MonthlyBudget | null = null;
+
+      if (user) {
+        // Intentar usar Firebase primero
+        try {
+          budgetsList = await getUserBudgets(user.uid);
+          current = await getFirebaseCurrentMonthBudget(user.uid);
+
+          if (!current) {
+            const now = new Date();
+            current = createEmptyBudget(now.getMonth() + 1, now.getFullYear());
+            await saveBudget(user.uid, current);
+            budgetsList = [...budgetsList, current];
+          }
+          
+          setIsFirebaseMode(true);
+        } catch (error) {
+          console.error('Error con Firebase, usando localStorage:', error);
+          current = loadFromLocalStorage();
+          budgetsList = [current];
+          setIsFirebaseMode(false);
+        }
+      } else {
+        // Sin usuario - usar localStorage
+        current = loadFromLocalStorage();
+        budgetsList = [current];
+        setIsFirebaseMode(false);
+      }
+
+      setBudgets(budgetsList);
       setCurrentBudget(current);
       setIsLoading(false);
     } catch (error) {
@@ -58,6 +91,7 @@ export default function BudgetPage() {
       const fallbackBudget = createEmptyBudget(now.getMonth() + 1, now.getFullYear());
       setCurrentBudget(fallbackBudget);
       setIsLoading(false);
+      setIsFirebaseMode(false);
     }
   };
 
@@ -86,6 +120,21 @@ export default function BudgetPage() {
     // Si no hay datos guardados, crear uno nuevo
     const now = new Date();
     return createEmptyBudget(now.getMonth() + 1, now.getFullYear());
+  };
+
+  const saveBudgetToStorage = async (budget: MonthlyBudget) => {
+    if (isFirebaseMode && user) {
+      // Intentar guardar en Firebase primero
+      try {
+        await saveBudget(user.uid, budget);
+      } catch (error) {
+        console.error('Error guardando en Firebase, usando localStorage:', error);
+        saveToLocalStorage(budget);
+      }
+    } else {
+      // Guardar solo en localStorage
+      saveToLocalStorage(budget);
+    }
   };
 
   const saveToLocalStorage = (budget: MonthlyBudget) => {
@@ -120,7 +169,7 @@ export default function BudgetPage() {
 
     setBudgets(updatedBudgets);
     setCurrentBudget(updatedBudget);
-    saveToLocalStorage(updatedBudget);
+    await saveBudgetToStorage(updatedBudget);
 
     // Limpiar formulario
     setIncomeForm({
@@ -159,7 +208,7 @@ export default function BudgetPage() {
 
     setBudgets(updatedBudgets);
     setCurrentBudget(updatedBudget);
-    saveToLocalStorage(updatedBudget);
+    await saveBudgetToStorage(updatedBudget);
 
     // Limpiar formulario
     setExpenseForm({
@@ -186,7 +235,7 @@ export default function BudgetPage() {
 
     setBudgets(updatedBudgets);
     setCurrentBudget(updatedBudget);
-    saveToLocalStorage(updatedBudget);
+    await saveBudgetToStorage(updatedBudget);
   };
 
   const deleteExpense = async (id: string) => {
@@ -204,7 +253,7 @@ export default function BudgetPage() {
 
     setBudgets(updatedBudgets);
     setCurrentBudget(updatedBudget);
-    saveToLocalStorage(updatedBudget);
+    await saveBudgetToStorage(updatedBudget);
   };
 
   if (authLoading || isLoading || !currentBudget) {
